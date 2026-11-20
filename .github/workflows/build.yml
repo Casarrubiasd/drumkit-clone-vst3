@@ -1,0 +1,45 @@
+name: Build VST3 + DMG (macOS)
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Ad-hoc sign
+        run: |
+          codesign --force --deep -s - "build/DrumkitClone_artefacts/Release/VST3/DrumKit Clone.vst3"
+
+      - name: Create DMG
+        run: |
+          STAGE=dmg-stage
+          mkdir -p "$STAGE"
+          cp -R "build/DrumkitClone_artefacts/Release/VST3/DrumKit Clone.vst3" "$STAGE/"
+          cat > "$STAGE/Instalar DrumKit Clone.command" << 'SH'
+          #!/bin/bash
+          DEST="$HOME/Library/Audio/Plug-Ins/VST3"
+          SRC="$(cd "$(dirname "$0")" && pwd)/DrumKit Clone.vst3"
+          mkdir -p "$DEST"
+          rm -rf "$DEST/DrumKit Clone.vst3"
+          cp -R "$SRC" "$DEST/"
+          xattr -dr com.apple.quarantine "$DEST/DrumKit Clone.vst3"
+          echo "Instalado en $DEST. Reinicia Ableton Live y haz Rescan de plug-ins."
+          read -p "Pulsa Enter para cerrar..."
+          SH
+          chmod +x "$STAGE/Instalar DrumKit Clone.command"
+          hdiutil create -volname "DrumKit Clone" -srcfolder "$STAGE" -ov -format UDZO DrumKitClone-macOS.dmg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DrumKitClone-macOS
+          path: DrumKitClone-macOS.dmg
